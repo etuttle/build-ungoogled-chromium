@@ -86,3 +86,4 @@ try:
         cwd='${HOME}/ungoogled-chromium-archlinux')
 finally:
     ec2.terminate_instances(InstanceIds=[instance_id])
+
