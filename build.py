@@ -10,6 +10,10 @@ import textwrap
 from paramiko import BadHostKeyException, AuthenticationException, SSHException
 from time import sleep
 
+AMI_USER='arch'
+PROFILE_NAME='etuttle-admin-r'
+REGION_NAME='us-east-2'
+
 
 def wait_ssh(ip, user, interval=5, retries=100):
     print "Waiting for SSH connection to %s" % hostname
@@ -28,11 +32,14 @@ def wait_ssh(ip, user, interval=5, retries=100):
             sleep(interval)
 
 
-session = boto3.session.Session(profile_name='ethan')
+session = boto3.session.Session(
+    profile_name=PROFILE_NAME,
+    region_name=REGION_NAME
+)
 ec2 = session.client('ec2')
 instance_res = ec2.run_instances(KeyName='ethant',
                                  InstanceType='m5d.24xlarge',
-                                 ImageId='ami-00031286724f9b660',
+                                 ImageId='ami-057b556e059980ae0',
                                  MinCount=1,
                                  MaxCount=1,
                                  BlockDeviceMappings=[
@@ -40,15 +47,9 @@ instance_res = ec2.run_instances(KeyName='ethant',
                                       'Ebs': {'VolumeSize': 100}}
                                  ],
                                  IamInstanceProfile={
-                                     'Arn': 'arn:aws:iam::378308805141:instance-profile/build-instance'
+                                     'Arn': 'arn:aws:iam::378308805141:instance-profile/instance-build-scratch'
                                  },
-                                 UserData=textwrap.dedent("""\
-                                 #!/bin/bash
-                                 useradd -m ec2-user
-                                 install -d -o ec2-user -g ec2-user -m 0700 /home/ec2-user/.ssh
-                                 install -o ec2-user /root/.ssh/authorized_keys /home/ec2-user/.ssh/authorized_keys
-                                 echo "ec2-user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-                                 """))
+                                )
 instance_id = instance_res['Instances'][0]['InstanceId']
 
 print "Waiting for instance to start"
@@ -61,7 +62,7 @@ shell = None
 
 def connect():
     global shell
-    shell = spur.SshShell(hostname=hostname, username='ec2-user', missing_host_key=spur.ssh.MissingHostKey.accept)
+    shell = spur.SshShell(hostname=hostname, username=AMI_USER, missing_host_key=spur.ssh.MissingHostKey.accept)
 
 
 def run(cmd, **kwargs):
@@ -69,22 +70,19 @@ def run(cmd, **kwargs):
 
 
 try:
-    wait_ssh(hostname, user='ec2-user')
+    wait_ssh(hostname, user=AMI_USER)
     connect()
     run(['sudo', 'pacman', '--noconfirm', '-Syu'])
     run(['sudo', 'pacman', '--noconfirm', '-Sy', 'git', 'base-devel', 'noto-fonts', 'python-pip'])
     run(['sudo', 'pip', 'install', 'awscli'])
     run(['sudo', 'reboot'], allow_error=True)
 
-    wait_ssh(hostname, user='ec2-user')
+    wait_ssh(hostname, user=AMI_USER)
     connect()
-    run(['git', 'clone', 'https://aur.archlinux.org/libglvnd-glesv2.git'])
-    run(['makepkg', '-s', '--noconfirm'], cwd='/home/ec2-user/libglvnd-glesv2')
-    run(['sh', '-c', 'yes | sudo pacman -U /home/ec2-user/libglvnd-glesv2/libglvnd-glesv2*.pkg.tar.xz'])
 
     run(['git', 'clone', 'https://github.com/ungoogled-software/ungoogled-chromium-archlinux.git'])
-    run(['makepkg', '-s', '--noconfirm'], cwd='/home/ec2-user/ungoogled-chromium-archlinux')
-    run(['/bin/sh', '-c', 'aws s3 cp --no-progress ungoogled-chromium-*.pkg.tar.xz s3://ethant-build-scratch/'],
-        cwd='/home/ec2-user/ungoogled-chromium-archlinux')
+    run(['makepkg', '-s', '--noconfirm'], cwd='${HOME}/ungoogled-chromium-archlinux')
+    run(['/bin/sh', '-c', 'aws s3 cp --no-progress ungoogled-chromium-*.pkg.tar.zst s3://ethant-build-scratch/'],
+        cwd='${HOME}/ungoogled-chromium-archlinux')
 finally:
     ec2.terminate_instances(InstanceIds=[instance_id])
