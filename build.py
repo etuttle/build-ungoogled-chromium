@@ -5,18 +5,17 @@ import paramiko
 import socket
 import spur
 import sys
-import textwrap
 
 from paramiko import BadHostKeyException, AuthenticationException, SSHException
 from time import sleep
 
 AMI_USER='arch'
-PROFILE_NAME='etuttle-admin-r'
+PROFILE_NAME='etuttle-oidc'
 REGION_NAME='us-east-2'
 
 
 def wait_ssh(ip, user, interval=5, retries=100):
-    print "Waiting for SSH connection to %s" % hostname
+    print("Waiting for SSH connection to %s" % hostname)
 
     for x in range(retries):
         try:
@@ -33,13 +32,13 @@ def wait_ssh(ip, user, interval=5, retries=100):
 
 
 session = boto3.session.Session(
-    profile_name=PROFILE_NAME,
+    profile_name='etuttle-oidc',
     region_name=REGION_NAME
 )
 ec2 = session.client('ec2')
 instance_res = ec2.run_instances(KeyName='ethant',
                                  InstanceType='m5d.24xlarge',
-                                 ImageId='ami-057b556e059980ae0',
+                                 ImageId='ami-043b666ec218ceb75',
                                  MinCount=1,
                                  MaxCount=1,
                                  BlockDeviceMappings=[
@@ -52,7 +51,7 @@ instance_res = ec2.run_instances(KeyName='ethant',
                                 )
 instance_id = instance_res['Instances'][0]['InstanceId']
 
-print "Waiting for instance to start"
+print("Waiting for instance to start")
 ec2.get_waiter('instance_running').wait(InstanceIds=[instance_id])
 
 desc_res = ec2.describe_instances(InstanceIds=[instance_id])
@@ -85,5 +84,5 @@ try:
     run(['/bin/sh', '-c', 'aws s3 cp --no-progress ungoogled-chromium-*.pkg.tar.zst s3://ethant-build-scratch/'],
         cwd='${HOME}/ungoogled-chromium-archlinux')
 finally:
-    ec2.terminate_instances(InstanceIds=[instance_id])
-
+    # ec2.terminate_instances(InstanceIds=[instance_id])
+    pass
